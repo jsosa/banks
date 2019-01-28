@@ -107,7 +107,7 @@ def run_simulation(widthtif, bedtif, runoffcsv, date1, date2, lisfloodfp):
               t=t)
 
     # Run simulation
-    call([lisfloodfp, '-v', 'lfp.par'], cwd='./banks-temp')
+    call([lisfloodfp, '-v', 'lfp.par'], cwd=OUTFOLDER)
 
 
 def calc_banks(banktif, bedtif, fname_disch, fname_stage, reccsv, return_per, layer):
