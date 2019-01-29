@@ -23,22 +23,30 @@ from lfptools.buildmodel import write_bci
 from lfptools.buildmodel import write_bdy
 from lfptools.buildmodel import write_evap
 from lfptools.buildmodel import write_par
+from lfptools.buildmodel import write_gauge_stage_all_cells
 
 
-OUTFOLDER = './banks-temp/'
+def banks(dirtif, widthtif, bedtif, runoffcsv, reccsv, date1, date2, banktif, return_per, layer, lisfloodfp):
 
+    # Create a temp temporal work folder
+    outfolder = os.path.dirname(banktif) + '/banks-temp/'
+    try:
+        os.makedirs(outfolder + 'lfp/')
+    except FileExistsError:
+        pass
 
-def banks(widthtif, bedtif, runoffcsv, reccsv, date1, date2, banktif, return_per, layer, lisfloodfp):
+    run_simulation(reccsv=reccsv,
+                   dirtif=dirtif, 
+                   widthtif=widthtif,
+                   bedtif=bedtif,
+                   runoffcsv=runoffcsv,
+                   date1=date1,
+                   date2=date2,
+                   lisfloodfp=lisfloodfp,
+                   outfolder=outfolder)
 
-    # run_simulation(widthtif=widthtif,
-    #                bedtif=bedtif,
-    #                runoffcsv=runoffcsv,
-    #                date1=date1,
-    #                date2=date2,
-    #                lisfloodfp=lisfloodfp)
-
-    dischf = OUTFOLDER + 'lfp/lfp.discharge'
-    stagef = OUTFOLDER + 'lfp/lfp.stage'
+    dischf = outfolder + 'lfp/lfp.discharge'
+    stagef = outfolder + 'lfp/lfp.stage'
 
     calc_banks(banktif=banktif,
                bedtif=bedtif,
@@ -46,71 +54,70 @@ def banks(widthtif, bedtif, runoffcsv, reccsv, date1, date2, banktif, return_per
                fname_stage=stagef,
                reccsv=reccsv,
                return_per=return_per,
-               layer=layer)
+               layer=layer,
+               outfolder=outfolder)
 
 
-def run_simulation(widthtif, bedtif, runoffcsv, date1, date2, lisfloodfp):
-
-    # Create a temp temporal work folder
-    try:
-        os.makedirs(OUTFOLDER + 'lfp/')
-    except FileExistsError:
-        pass
+def run_simulation(reccsv, dirtif, widthtif, bedtif, runoffcsv, date1, date2, lisfloodfp, outfolder):
 
     # Determine end of the simulation, how many days
     t = (pd.to_datetime(date2, format='%Y-%m-%d') -
          pd.to_datetime(date1, format='%Y-%m-%d')).days + 1
 
     # Create 1D DEM, synthetic
-    demtif = OUTFOLDER + 'dem1d.tif'
+    demtif = outfolder + 'dem1d.tif'
     wdt = gu.get_data(widthtif)
     geo = gu.get_geo(widthtif)
     dem = np.where(wdt > 0, 10000, 0)
     gu.write_raster(dem, demtif, geo, 'Int16', 0)
 
     # Convert input files to ASCII
-    widthasc = OUTFOLDER + 'width.asc'
+    widthasc = outfolder + 'width.asc'
     call(['gdal_translate',
           '-of', 'AAIGRID',
           widthtif, widthasc])
 
-    demasc = OUTFOLDER + 'dem.asc'
+    demasc = outfolder + 'dem.asc'
     call(['gdal_translate',
           '-of', 'AAIGRID',
           demtif, demasc])
 
-    bedasc = OUTFOLDER + 'bed.asc'
+    bedasc = outfolder + 'bed.asc'
     call(['gdal_translate',
           '-of', 'AAIGRID',
           bedtif, bedasc])
 
     # Write LISFLOOD-FP files
-    bcilfp = OUTFOLDER + 'lfp.bci'
+    bcilfp = outfolder + 'lfp.bci'
     write_bci(bcilfp, runoffcsv)
 
-    bdylfp = OUTFOLDER + 'lfp.bdy'
+    bdylfp = outfolder + 'lfp.bdy'
     write_bdy(bdylfp, runoffcsv, t)
 
-    evaplfp = OUTFOLDER + 'lfp.evap'
+    evaplfp = outfolder + 'lfp.evap'
     write_evap(evaplfp, t)
 
-    parlfp = OUTFOLDER + 'lfp.par'
+    gaugelfp = outfolder + 'lfp.gauge'
+    stagelfp = outfolder + 'lfp.stage'
+    write_gauge_stage_all_cells(reccsv, dirtif, widthtif, gaugelfp, stagelfp)
+
+    parlfp = outfolder + 'lfp.par'
     write_par(parlfp=parlfp,
               bcilfp=bcilfp,
               bdylfp=bdylfp,
               evaplfp=evaplfp,
-              gaugelfp='./none',
-              stagelfp='./none',
+              gaugelfp=gaugelfp,
+              stagelfp=stagelfp,
               dembnktif=demasc,
               wdttif=widthasc,
               bedtif=bedasc,
               t=t)
 
     # Run simulation
-    call([lisfloodfp, '-v', 'lfp.par'], cwd=OUTFOLDER)
+    call([lisfloodfp, '-v', 'lfp.par'], cwd=outfolder)
 
 
-def calc_banks(banktif, bedtif, fname_disch, fname_stage, reccsv, return_per, layer):
+def calc_banks(banktif, bedtif, fname_disch, fname_stage, reccsv, return_per, layer, outfolder):
 
     # Loading stage and discharge files
     # Try statement added since some discharge and stage files are empty, exit program
@@ -144,7 +151,7 @@ def calc_banks(banktif, bedtif, fname_disch, fname_stage, reccsv, return_per, la
     for i in range(discharge.shape[1]):
         try:
             dis_err.append(get_discharge_error(discharge[i]))
-        except KeyError:
+        except (KeyError,np.core._internal.AxisError):
             dis_err.append(0)
 
     # Estimating a defenses-related discharge
@@ -153,7 +160,7 @@ def calc_banks(banktif, bedtif, fname_disch, fname_stage, reccsv, return_per, la
         ret_pe = gdf_locs_ret['MerL_Riv'][i]
         try:
             dis_df.append(get_discharge_returnperiod(discharge[i], ret_pe))
-        except KeyError:
+        except (KeyError,np.core._internal.AxisError):
             dis_df.append(np.nan)
 
     # Estimating error in stage fitting
@@ -195,10 +202,10 @@ def calc_banks(banktif, bedtif, fname_disch, fname_stage, reccsv, return_per, la
 
     # Save errors in a GeoJSON file
     try:
-        gdf_sum_rec.to_file(OUTFOLDER + 'bnk_err.geojson', driver='GeoJSON')
+        gdf_sum_rec.to_file(outfolder + 'bnk_err.geojson', driver='GeoJSON')
     except:
-        os.remove(OUTFOLDER + 'bnk_err.geojson')
-        gdf_sum_rec.to_file(OUTFOLDER + 'bnk_err.geojson', driver='GeoJSON')
+        os.remove(outfolder + 'bnk_err.geojson')
+        gdf_sum_rec.to_file(outfolder + 'bnk_err.geojson', driver='GeoJSON')
 
     # Score should greater than 0.85 for both Discharge and Stage to be accepted, otherwise NaN
     gdf_err = gdf_sum_rec['stg_df'].where(
