@@ -263,21 +263,10 @@ def get_discharge_returnperiod(tserie, x):
     return hu.get_dis_rp(amax_vals, hu.stats.genextreme, x, 'mle')
 
 
-def plot_rel_retperiod_discharge(tserie):
-    serie = tserie.to_frame()
-    amax = hu.find_events_amax(serie)
-    serie.columns = ['series']
-    amax.columns = ['amax']
-    ax = serie.plot()
-    amax.plot(ax=ax, style='o', c='Red')
-    ax.set_xlabel('Date')
-    ax.set_ylabel('Discharge (m^3/s)')
-    amax_vals = np.sort(amax.values.squeeze())
-    hu.plot_return(amax_vals, hu.stats.genextreme, 'mle')
-
-
 def _fit_func_discharge_stage(func_discharge_stage, df_dis, df_sta):
-    popt, pcov = curve_fit(func_discharge_stage, df_dis, df_sta)
+    mydf = pd.DataFrame({'dis':df_dis,'sta':df_sta})
+    mydf.dropna(inplace=True)
+    popt, pcov = curve_fit(func_discharge_stage, mydf['dis'], mydf['sta'])
     return popt
 
 
@@ -305,13 +294,22 @@ def get_stage_discharge(discharge, stage, x):
     return _func_discharge_stage(x, *popt)
 
 
-def plot_rel_discharge_stage(tdischarge, tstage):
+def plot_rel_retperiod_discharge(tserie, figsiz):
+    serie = tserie.to_frame()
+    amax = hu.find_events_amax(serie)
+    serie.columns = ['series']
+    amax.columns = ['amax']
+    amax_vals = np.sort(amax.values.squeeze())
+    hu.plot_return(amax_vals, hu.stats.genextreme, 'mle', figsiz=figsiz)
+
+
+def plot_rel_discharge_stage(tdischarge, tstage, figsiz):
     df = pd.DataFrame([tdischarge, tstage, ]).T
     df.columns = ['discharge', 'stage']
     df['func_x'] = np.linspace(
         df.discharge.min(), df.discharge.max(), len(df['stage']))
     df['func'] = get_stage_discharge(tdischarge, tstage, df['func_x'])
-    ax = df.plot(kind='scatter', x='discharge', y='stage')
+    ax = df.plot(kind='scatter', x='discharge', y='stage', figsize=figsiz, alpha=0.4)
     df.plot(kind='line', x='func_x', y='func', style='-r', ax=ax)
-    ax.set_xlabel('discharge')
-    ax.set_ylabel('stage')
+    ax.set_xlabel('Discharge [m^3/s]')
+    ax.set_ylabel('Stage [m]')
